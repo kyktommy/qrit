@@ -27,7 +27,7 @@ func ServeFile(filename string) {
 		panic(err)
 	}
 
-	addr := ip + ":8282"
+	addr := ip + ":" + GetRandomPort()
 	server := &http.Server{Addr: addr}
 	http.HandleFunc("/send/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", "attachment; filename="+outputName)

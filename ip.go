@@ -1,8 +1,11 @@
 package main
 
 import (
+	"math/rand"
 	"net"
+	"strconv"
 	"strings"
+	"time"
 )
 
 func GetIp() (string, error) {
@@ -32,4 +35,10 @@ func GetIp() (string, error) {
 		}
 	}
 	return "", nil
+}
+
+func GetRandomPort() string {
+	// 61000 - 32768
+	rand.Seed(time.Now().UnixNano())
+	return strconv.Itoa(rand.Intn(61001-32768) + 32768)
 }
