@@ -7,7 +7,8 @@ qrit/
 ├── main.go          entry point, arg routing
 ├── ip.go            LAN IP discovery + random ephemeral port
 ├── qr.go            terminal QR rendering (qrterminal/v3 wrapper)
-├── serve-file.go    file mode: HTTP server + QR of download URL
+├── serve-share.go   2-way share: HTTP server, download routes, upload handler + CLI prompt
+├── page.go          HTML template rendered at `/`
 ├── serve-http.go    URL mode: QR of a given http(s):// URL
 ├── test.txt         fixture for manual testing
 ├── go.mod / go.sum
@@ -19,9 +20,9 @@ qrit/
 ## File responsibilities
 
 ### `main.go`
-- Parses `os.Args`, expects exactly one argument.
-- Routes to `ServeURL` (starts with `http://`/`https://`) or `ServeFile`.
-- Prints usage + `os.Exit(2)` on misuse.
+- Parses `os.Args`. One arg that starts with `http://` / `https://` → `ServeURL`.
+- Everything else (zero or more filenames) → `ServeShare`.
+- User-input errors go to stderr with `os.Exit(2)`.
 
 ### `ip.go`
 - `GetIP() (string, error)` — first up, non-loopback interface with an RFC1918 IPv4 (via `ip.IsPrivate()`). Returns an error if none found.
@@ -30,29 +31,36 @@ qrit/
 ### `qr.go`
 - `RenderString(s string)` — writes a half-block ANSI QR to stdout.
 - On Windows: falls back to full-block via `go-colorable`.
-- Color codes use `\x1b[...m` sequences. The v3 `qrterminal.Config` owns layout; we override the four character slots.
 
-### `serve-file.go`
-- `ServeFile(filename string)`:
-  1. Resolves absolute path, stats it, rejects missing / directory.
-  2. Computes safe `outputName` (spaces → dashes).
-  3. Gets LAN IP + random port, builds `addr` with `net.JoinHostPort`.
-  4. Registers `/send/` on a local `http.ServeMux` that serves the file with `Content-Disposition: attachment`.
-  5. Prints download URL, renders QR, starts server (blocking).
-- Fatal errors go through `log.Fatal*`.
+### `serve-share.go`
+- `ServeShare(args []string) error` — validates files, starts HTTP server on `LAN-IP:rand-port`, prints QR for `http://host:port/`.
+- Routes:
+  - `GET /` → `renderIndex` (in `page.go`).
+  - `GET /send/<name>` → streams one of the shared files with `Content-Disposition: attachment`. Lookup is via `map[string]sharedFile`, so unknown names 404 and path traversal is not possible.
+  - `POST /upload` → parses multipart field `files`, auto-saves each to `downloadsDir()` (= `$HOME/Downloads`, created on demand) via `uniquePath` with mode `0o644`. Returns a plain-text `received:` summary.
+- Fatal setup errors use `log.Fatal*`; arg errors return from `ServeShare` so `main` can exit 2.
+
+### `page.go`
+- `indexHTML` — single inline `html/template` with download list + multi-file upload form. Minimal JS submits the form via `fetch` and prints the CLI's response in a status line.
+- `renderIndex(w, files)` — executes the template.
 
 ### `serve-http.go`
-- `ServeURL(url string)` — prints the URL and renders its QR. That's it.
+- `ServeURL(url string)` — prints the URL and renders its QR. No server.
 
 ## Call graph
 
 ```
 main
 ├── ServeURL  ──────────────→ RenderString
-└── ServeFile ──┬→ GetIP
+└── ServeShare ─┬→ resolveShares
+                ├→ GetIP
                 ├→ GetRandomPort
                 ├→ RenderString
                 └→ http.Server.ListenAndServe
+                    ├→ renderIndex            (GET /)
+                    ├→ http.ServeFile         (GET /send/<name>)
+                    └→ handleUpload           (POST /upload)
+                        └→ saveUpload         (downloadsDir + uniquePath + io.Copy)
 ```
 
 ## Dependencies

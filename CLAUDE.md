@@ -1,15 +1,17 @@
 # qrit
 
-Small Go CLI that prints a terminal QR code for a URL, or serves a local file over LAN HTTP and prints a QR for the download URL.
+Small Go CLI that prints a terminal QR code for a URL, or starts a 2-way LAN share: a phone scans the QR, opens a web page, and can download any of the shared files or upload new ones. Uploads are auto-accepted and saved to `~/Downloads` (created if missing); name collisions get ` (1)`, ` (2)`, ... suffixes.
 
 ## Commands
 
 ```bash
-go build -o qrit ./...        # build
-go vet ./...                   # lint
-go run . <file|url>            # run from source
-./qrit test.txt                # serve a file
-./qrit https://example.com     # QR for a URL
+go build -o qrit ./...              # build
+go vet ./...                         # lint
+go run . <file...|url>               # run from source
+./qrit https://example.com           # QR for a URL (print-only, no server)
+./qrit test.txt                      # share a single file (also accepts uploads)
+./qrit a.pdf b.jpg c.zip             # share multiple files
+./qrit                               # upload-only (no files shared for download)
 ```
 
 Module: `github.com/kyktommy/qrit`. Binary: `qrit`. Go 1.24.
@@ -27,18 +29,22 @@ Module: `github.com/kyktommy/qrit`. Binary: `qrit`. Go 1.24.
 - **qrterminal v3**: `Config` struct fields used here (`HalfBlocks`, `Level`, `Writer`, `BlackChar`, `BlackWhiteChar`, `WhiteChar`, `WhiteBlackChar`) are stable across v3.x. If bumping past v3.2.1, re-check `qr.go` compiles.
 - **`math/rand/v2`**: no `Seed` needed (auto-seeded). Use `rand.IntN`, not `rand.Intn`.
 - **HTTP server**: uses a local `http.ServeMux`, not the default global mux — do not switch to `http.HandleFunc` (the top-level one registers on the default mux and leaks state across test runs).
+- **Share endpoints**: `GET /` renders the page, `GET /send/<name>` streams a shared file (lookup is by map key, so path-traversal attempts 404), `POST /upload` accepts multipart form field `files` (repeatable) and auto-accepts everything — no CLI prompt.
+- **Upload landing spot**: `downloadsDir()` = `$HOME/Downloads` (created if missing). `uniquePath` deduplicates — existing names get ` (1)`, ` (2)`, etc. Filenames are passed through `filepath.Base` to strip client-supplied path components.
+- **Double-slash gotcha in tests**: if `$URL` already ends with `/`, don't concatenate `$URL/upload` — Go's mux normalises `//upload` to `/upload` with a 307 redirect that curl won't follow without `-L`. Browsers submitting the real form don't hit this.
 
 ## Testing by hand
 
-File mode end-to-end:
+URL mode prints only:
 
 ```bash
-./qrit test.txt &
-PID=$!
-sleep 1
-URL=$(ps ... | ...)   # or read from the program's stdout
-curl -sS -D - "$URL/send/test.txt"
-kill $PID
+./qrit https://example.com
 ```
 
-See git log entry around the v3 upgrade for the exact smoke-test commands used.
+Share mode end-to-end (needs a TTY for the prompt, or a fifo on stdin):
+
+```bash
+./qrit test.txt            # scan the QR, tap the file link, tap Upload
+```
+
+Automated smoke test uses a named pipe for stdin so `echo y > fifo` answers prompts. See the commit adding the 2-way share for the exact script.
