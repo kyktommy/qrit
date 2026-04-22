@@ -1,20 +1,22 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 )
 
 func main() {
 	if len(os.Args) != 2 {
-		panic("Usage: qr test.txt")
+		fmt.Fprintln(os.Stderr, "Usage: qrit <file|url>")
+		os.Exit(2)
 	}
 
-	filename := os.Args[1]
+	arg := os.Args[1]
 
-	if strings.HasPrefix(filename, "http") {
-		ServeURL(filename)
+	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+		ServeURL(arg)
 	} else {
-		ServeFile(filename)
+		ServeFile(arg)
 	}
 }

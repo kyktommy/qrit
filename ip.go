@@ -1,44 +1,41 @@
 package main
 
 import (
-	"math/rand"
+	"errors"
+	"math/rand/v2"
 	"net"
 	"strconv"
-	"strings"
-	"time"
 )
 
-func GetIp() (string, error) {
+func GetIP() (string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "", err
 	}
-	// handle err
-	for _, i := range ifaces {
-		addrs, err := i.Addrs()
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
 		if err != nil {
 			return "", err
 		}
-		// handle err
 		for _, addr := range addrs {
-			var ip net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				ip = v.IP
-			case *net.IPAddr:
-				ip = v.IP
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
 			}
-			// process IP address
-			if strings.HasPrefix(ip.String(), "192.168") {
-				return ip.String(), nil
+			ip := ipNet.IP.To4()
+			if ip == nil || !ip.IsPrivate() {
+				continue
 			}
+			return ip.String(), nil
 		}
 	}
-	return "", nil
+	return "", errors.New("no private IPv4 address found on any interface")
 }
 
 func GetRandomPort() string {
-	// 61000 - 32768
-	rand.Seed(time.Now().UnixNano())
-	return strconv.Itoa(rand.Intn(61001-32768) + 32768)
+	// Ephemeral range: 32768 - 61000
+	return strconv.Itoa(rand.IntN(61001-32768) + 32768)
 }

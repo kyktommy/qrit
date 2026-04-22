@@ -1,12 +1,11 @@
 package main
 
-// RenderString as a QR code
 import (
 	"os"
 	"runtime"
 
-	colorable "github.com/mattn/go-colorable"
-	"github.com/mdp/qrterminal"
+	"github.com/mattn/go-colorable"
+	"github.com/mdp/qrterminal/v3"
 )
 
 func RenderString(s string) {
@@ -14,10 +13,10 @@ func RenderString(s string) {
 		HalfBlocks:     true,
 		Level:          qrterminal.L,
 		Writer:         os.Stdout,
-		BlackWhiteChar: "\u001b[37m\u001b[40m\u2584\u001b[0m",
-		BlackChar:      "\u001b[30m\u001b[40m\u2588\u001b[0m",
-		WhiteBlackChar: "\u001b[30m\u001b[47m\u2585\u001b[0m",
-		WhiteChar:      "\u001b[37m\u001b[47m\u2588\u001b[0m",
+		BlackWhiteChar: "\x1b[37m\x1b[40m▄\x1b[0m",
+		BlackChar:      "\x1b[30m\x1b[40m█\x1b[0m",
+		WhiteBlackChar: "\x1b[30m\x1b[47m▅\x1b[0m",
+		WhiteChar:      "\x1b[37m\x1b[47m█\x1b[0m",
 	}
 	if runtime.GOOS == "windows" {
 		qrConfig.HalfBlocks = false

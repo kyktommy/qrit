@@ -1,37 +1,46 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 )
 
 func ServeFile(filename string) {
-	pwd, _ := os.Getwd()
-	filepath := path.Join(pwd, filename)
-	stat, err := os.Stat(filepath)
-	if os.IsNotExist(err) {
-		panic("file not exit")
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		log.Fatalf("resolve path: %v", err)
+	}
+
+	stat, err := os.Stat(absPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			log.Fatalf("file not found: %s", absPath)
+		}
+		log.Fatalf("stat file: %v", err)
 	}
 	if stat.IsDir() {
-		panic("directory not support")
+		log.Fatalf("directory not supported: %s", absPath)
 	}
 
-	outputName := path.Base(filepath)
-	outputName = strings.ReplaceAll(outputName, " ", "-")
+	outputName := strings.ReplaceAll(filepath.Base(absPath), " ", "-")
 
-	ip, err := GetIp()
+	ip, err := GetIP()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	addr := ip + ":" + GetRandomPort()
-	server := &http.Server{Addr: addr}
-	http.HandleFunc("/send/", func(w http.ResponseWriter, r *http.Request) {
+	addr := net.JoinHostPort(ip, GetRandomPort())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/send/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", "attachment; filename="+outputName)
-		http.ServeFile(w, r, filepath)
+		http.ServeFile(w, r, absPath)
 	})
 
 	downloadURL := "http://" + addr + "/send/" + outputName
@@ -39,5 +48,8 @@ func ServeFile(filename string) {
 	RenderString(downloadURL)
 	fmt.Println("Press CTRL+C to exit once you get the file.")
 
-	server.ListenAndServe()
+	server := &http.Server{Addr: addr, Handler: mux}
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatalf("serve: %v", err)
+	}
 }
