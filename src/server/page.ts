@@ -1,12 +1,37 @@
-package main
+import type { SharedFile } from '../lib/files.ts';
 
-import (
-	"html/template"
-	"log"
-	"net/http"
-)
+function escapeHtml(s: string): string {
+  return s
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
-const indexHTML = `<!doctype html>
+function renderFileRows(files: SharedFile[]): string {
+  if (files.length === 0) {
+    return '<div class="empty">No files shared</div>';
+  }
+  return files
+    .map(
+      (f) => `
+<a class="row" href="/send/${encodeURIComponent(f.name)}" download>
+<span class="icon" aria-hidden="true">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+</span>
+<span class="label">${escapeHtml(f.name)}</span>
+<span class="meta">${escapeHtml(f.sizeHuman)}</span>
+<span class="chev" aria-hidden="true">
+<svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 8 8-8 8"/></svg>
+</span>
+</a>`,
+    )
+    .join('');
+}
+
+export function renderIndex(files: SharedFile[]): string {
+  return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -192,22 +217,7 @@ input[type=file] { display: none; }
 
 <div class="section-label">Shared</div>
 <div class="card">
-{{if .Files}}
-{{range .Files}}
-<a class="row" href="/send/{{.Name}}" download>
-<span class="icon" aria-hidden="true">
-<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-</span>
-<span class="label">{{.Name}}</span>
-<span class="meta">{{.SizeH}}</span>
-<span class="chev" aria-hidden="true">
-<svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 8 8-8 8"/></svg>
-</span>
-</a>
-{{end}}
-{{else}}
-<div class="empty">No files shared</div>
-{{end}}
+${renderFileRows(files)}
 </div>
 
 <div class="section-label">Send to host</div>
@@ -301,13 +311,5 @@ input[type=file] { display: none; }
 </script>
 </body>
 </html>
-`
-
-var indexTmpl = template.Must(template.New("index").Parse(indexHTML))
-
-func renderIndex(w http.ResponseWriter, files []sharedFile) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := indexTmpl.Execute(w, struct{ Files []sharedFile }{files}); err != nil {
-		log.Printf("render: %v", err)
-	}
+`;
 }

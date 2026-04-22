@@ -1,50 +1,67 @@
 # qrit
 
-Small Go CLI that prints a terminal QR code for a URL, or starts a 2-way LAN share: a phone scans the QR, opens a web page, and can download any of the shared files or upload new ones. Uploads are auto-accepted and saved to `~/Downloads` (created if missing); name collisions get ` (1)`, ` (2)`, ... suffixes.
+Bun + Ink CLI that prints a terminal QR code for a URL, or starts a 2-way LAN share: a phone scans the QR, opens a web page, downloads any shared file, or uploads new ones. Uploads auto-save to `~/Downloads`; name collisions get ` (1)`, ` (2)`, ... suffixes.
 
 ## Commands
 
-```bash
-go build -o qrit ./...              # build
-go vet ./...                         # lint
-go run . <file...|url>               # run from source
-./qrit https://example.com           # QR for a URL (print-only, no server)
-./qrit test.txt                      # share a single file (also accepts uploads)
-./qrit a.pdf b.jpg c.zip             # share multiple files
-./qrit                               # upload-only (no files shared for download)
+```sh
+bun install                          # deps
+bun run dev -- test.txt              # run from source
+bun run typecheck                    # tsc --noEmit
+bun run lint                         # biome
+bun run compile                      # standalone binaries in dist/
+bun link                             # expose `qrit` on PATH locally
 ```
 
-Module: `github.com/kyktommy/qrit`. Binary: `qrit`. Go 1.24.
+Runtime: Bun ≥ 1.1. Entry: `src/cli.tsx`. Published binary name: `qrit`.
+
+## Layout
+
+- `src/cli.tsx` — arg parsing + Ink `render`.
+- `src/components/` — Ink views (`UrlView`, `ShareView`, `QRCode`).
+- `src/server/index.ts` — `ShareServer` (Bun.serve); emits `upload` / `error` events.
+- `src/server/page.ts` — HTML template served at `/`.
+- `src/lib/network.ts` — LAN IPv4 detection + random ephemeral port (32768–61000).
+- `src/lib/files.ts` — resolve shares, human size.
+- `src/lib/downloads.ts` — `~/Downloads` dir, sanitize + uniquePath, `isURL`.
+- `src/lib/qr.ts` — ANSI half-block QR renderer (upper-half `▀`).
 
 ## Conventions
 
-- Keep it a single `package main`. No subpackages unless the file count genuinely justifies it.
-- Errors that abort the CLI use `log.Fatal*` (not `panic`) so output is clean.
-- User-input errors go to stderr with `os.Exit(2)`; runtime failures use `log.Fatal` (exit 1).
+- Single package, flat `src/` layout. No deep subpackages unless file count genuinely justifies one.
+- User-input errors go to stderr with `process.exit(2)`; runtime failures exit 1.
+- The server is an `EventEmitter`; `ShareView` subscribes to `upload` for the live feed. Keep it that way — don't bypass the emitter.
 
 ## Gotchas
 
-- **ANSI escapes**: Go strings need `\x1b` (or ``/`\033`) — NOT `\e`. The QR rendering in `qr.go` depends on this; a bare `[37m...` literal will not render colors.
-- **LAN IP detection** (`ip.go`): uses `ip.IsPrivate()` so all RFC1918 ranges work (`10/8`, `172.16/12`, `192.168/16`). Don't narrow it back to a `strings.HasPrefix("192.168")` check — that broke file mode on other networks.
-- **qrterminal v3**: `Config` struct fields used here (`HalfBlocks`, `Level`, `Writer`, `BlackChar`, `BlackWhiteChar`, `WhiteChar`, `WhiteBlackChar`) are stable across v3.x. If bumping past v3.2.1, re-check `qr.go` compiles.
-- **`math/rand/v2`**: no `Seed` needed (auto-seeded). Use `rand.IntN`, not `rand.Intn`.
-- **HTTP server**: uses a local `http.ServeMux`, not the default global mux — do not switch to `http.HandleFunc` (the top-level one registers on the default mux and leaks state across test runs).
-- **Share endpoints**: `GET /` renders the page, `GET /send/<name>` streams a shared file (lookup is by map key, so path-traversal attempts 404), `POST /upload` accepts multipart form field `files` (repeatable) and auto-accepts everything — no CLI prompt.
-- **Upload landing spot**: `downloadsDir()` = `$HOME/Downloads` (created if missing). `uniquePath` deduplicates — existing names get ` (1)`, ` (2)`, etc. Filenames are passed through `filepath.Base` to strip client-supplied path components.
-- **Double-slash gotcha in tests**: if `$URL` already ends with `/`, don't concatenate `$URL/upload` — Go's mux normalises `//upload` to `/upload` with a 307 redirect that curl won't follow without `-L`. Browsers submitting the real form don't hit this.
+- **ANSI escapes**: JS/TS strings use `\x1b` for ESC. Don't switch to literal `\e` — it isn't a JS escape.
+- **Half-block QR (`src/lib/qr.ts`)**: ▀ (upper half) renders the top pixel with FG and the bottom pixel with BG. Keep polarity: top-black → `FG_BLACK`, bottom-black → `BG_BLACK`. Swapping renders an inverted QR that scanners reject.
+- **LAN IP detection (`src/lib/network.ts`)**: checks all RFC1918 ranges (`10/8`, `172.16/12`, `192.168/16`) via an inline `isPrivateIPv4`. Don't narrow it to a `startsWith("192.168")` check — that broke file mode on other networks in the Go predecessor.
+- **`Bun.serve` per instance**: `ShareServer` creates its own `Bun.serve` with an explicit `fetch` handler. Each instance is isolated — don't reach for a shared global.
+- **Share endpoints**: `GET /` renders the page, `GET /send/<name>` streams a shared file (lookup is by `Map` key, so path-traversal attempts 404), `POST /upload` accepts multipart form field `files` (repeatable) and auto-accepts everything.
+- **Upload landing spot**: `downloadsDir()` = `$HOME/Downloads` (created if missing). `uniquePath()` deduplicates — existing names become ` (1)`, ` (2)`, etc. Filenames are passed through `sanitizeFilename()` (`path.basename`) to strip client-supplied path components.
+- **File writes use `flags: 'wx'`** — exclusive create — so we never overwrite a pre-existing file even if `uniquePath` races.
+- **qrcode library**: `QRCode.create(text, { errorCorrectionLevel: 'L' })` returns `{ modules: { size, data: Uint8ClampedArray } }`. If bumping past `qrcode@^1.5`, re-verify the field names.
 
 ## Testing by hand
 
-URL mode prints only:
+URL mode prints QR only:
 
-```bash
-./qrit https://example.com
+```sh
+bun run dev -- https://example.com
 ```
 
-Share mode end-to-end (needs a TTY for the prompt, or a fifo on stdin):
+Share mode end-to-end:
 
-```bash
-./qrit test.txt            # scan the QR, tap the file link, tap Upload
+```sh
+bun run dev -- test.txt
+# scan the QR, tap the file to download, or pick files to upload
 ```
 
-Automated smoke test uses a named pipe for stdin so `echo y > fifo` answers prompts. See the commit adding the 2-way share for the exact script.
+Quit the TUI with `q` or `Ctrl+C`.
+
+## Release / Homebrew
+
+Tag `vX.Y.Z` → `.github/workflows/release.yml` builds standalone Bun-compiled binaries for `darwin/linux × arm64/x64`, uploads them + a SHA-256 checksum file to the GitHub release, and (if `HOMEBREW_TAP_REPO` var + `HOMEBREW_TAP_TOKEN` secret are set) regenerates `Formula/qrit.rb` in the tap repo.
+
+`Formula/qrit.rb.template` is kept in-repo for reference / manual taps.

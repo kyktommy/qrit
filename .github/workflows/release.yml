@@ -1,0 +1,121 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: install
+        run: bun install --frozen-lockfile
+
+      - name: compile binaries
+        run: bun run compile
+
+      - name: upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/qrit-*.tar.gz
+            dist/checksums-*.txt
+          generate_release_notes: true
+
+  update-formula:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ vars.HOMEBREW_TAP_REPO != '' }}
+    steps:
+      - name: checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: download release checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern 'checksums-*.txt' \
+            --dir .
+
+      - name: render formula
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${TAG#v}"
+          CHECKSUMS="checksums-${VERSION}.txt"
+
+          sha_for() { grep "qrit-$1.tar.gz" "$CHECKSUMS" | awk '{print $1}'; }
+
+          DARWIN_ARM64=$(sha_for darwin-arm64)
+          DARWIN_X64=$(sha_for darwin-x64)
+          LINUX_ARM64=$(sha_for linux-arm64)
+          LINUX_X64=$(sha_for linux-x64)
+
+          mkdir -p tap/Formula
+          cat > tap/Formula/qrit.rb <<EOF
+          class Qrit < Formula
+            desc "Turn a QR code into a two-way LAN file drop"
+            homepage "https://github.com/${REPO}"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/${REPO}/releases/download/${TAG}/qrit-darwin-arm64.tar.gz"
+                sha256 "${DARWIN_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/${REPO}/releases/download/${TAG}/qrit-darwin-x64.tar.gz"
+                sha256 "${DARWIN_X64}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/${REPO}/releases/download/${TAG}/qrit-linux-arm64.tar.gz"
+                sha256 "${LINUX_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/${REPO}/releases/download/${TAG}/qrit-linux-x64.tar.gz"
+                sha256 "${LINUX_X64}"
+              end
+            end
+
+            def install
+              os   = OS.mac? ? "darwin" : "linux"
+              arch = Hardware::CPU.arm? ? "arm64" : "x64"
+              bin.install "qrit-#{os}-#{arch}" => "qrit"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/qrit --version")
+            end
+          end
+          EOF
+
+      - name: commit and push
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/qrit.rb
+          git commit -m "qrit ${{ github.ref_name }}" || exit 0
+          git push
