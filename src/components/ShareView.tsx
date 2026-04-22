@@ -1,21 +1,21 @@
 import { Box, Text, useApp } from 'ink';
 import Spinner from 'ink-spinner';
 import { useEffect, useState } from 'react';
-import type { SharedFile } from '../lib/files.ts';
+import type { SharedEntry } from '../lib/files.ts';
 import { ShareServer, type UploadEvent } from '../server/index.ts';
 import { QRCode } from './QRCode.tsx';
 
 type Props = {
-  files: SharedFile[];
+  entries: SharedEntry[];
   host: string;
   port: number;
 };
 
 const MAX_FEED = 8;
 
-export function ShareView({ files, host, port }: Props) {
+export function ShareView({ entries, host, port }: Props) {
   const { exit } = useApp();
-  const [server] = useState(() => new ShareServer(files, host, port));
+  const [server] = useState(() => new ShareServer(entries, host, port));
   const [feed, setFeed] = useState<UploadEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,17 +63,27 @@ export function ShareView({ files, host, port }: Props) {
       </Box>
 
       <Box marginTop={1} flexDirection="column">
-        <Text bold>Shared ({files.length})</Text>
-        {files.length === 0 ? (
+        <Text bold>Shared ({entries.length})</Text>
+        {entries.length === 0 ? (
           <Text color="gray">  (upload-only — no files offered for download)</Text>
         ) : (
-          files.map((f) => (
-            <Text key={f.name}>
-              {'  '}
-              <Text color="green">↓</Text> {f.name}{' '}
-              <Text color="gray">{f.sizeHuman}</Text>
-            </Text>
-          ))
+          entries.map((e) =>
+            e.kind === 'dir' ? (
+              <Text key={e.name}>
+                {'  '}
+                <Text color="yellow">▸</Text> {e.name}/{' '}
+                <Text color="gray">
+                  {e.fileCount ?? 0} file{(e.fileCount ?? 0) === 1 ? '' : 's'} · {e.sizeHuman}
+                </Text>
+              </Text>
+            ) : (
+              <Text key={e.name}>
+                {'  '}
+                <Text color="green">↓</Text> {e.name}{' '}
+                <Text color="gray">{e.sizeHuman}</Text>
+              </Text>
+            ),
+          )
         )}
       </Box>
 

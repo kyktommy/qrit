@@ -79,9 +79,9 @@ async function main() {
     return;
   }
 
-  let files;
+  let entries;
   try {
-    files = resolveShares(args);
+    entries = resolveShares(args);
   } catch (err) {
     process.stderr.write(`${(err as Error).message}\n`);
     process.exit(2);
@@ -96,7 +96,7 @@ async function main() {
   }
   const port = parsed.port ?? getRandomPort();
 
-  render(<ShareView files={files} host={host} port={port} />);
+  render(<ShareView entries={entries} host={host} port={port} />);
 }
 
 void main();

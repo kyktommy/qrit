@@ -23,11 +23,13 @@ bun link
 qrit https://example.com        # print-only QR for a URL
 qrit report.pdf                 # share one file, also accept uploads
 qrit a.pdf photo.jpg notes.txt  # share multiple files
+qrit ./photos/                  # share a folder (downloads as a zip)
+qrit ./photos/ notes.md         # mix files and folders
 qrit                            # upload-only drop (no downloads offered)
 qrit --port 8080 report.pdf     # pin a specific port
 ```
 
-Scan the QR with any phone, hit the web page, tap a filename to download or use the Upload form to push files back. Uploads are saved automatically to `~/Downloads` (collisions become `name (1).ext`, `name (2).ext`, ...).
+Scan the QR with any phone, hit the web page, tap a filename to download, tap a folder to download it as a zip, or tap "Download all as zip" to grab everything in one archive. Zips are streamed on the fly (no temp files). Use the Upload form to push files back — they're saved automatically to `~/Downloads` (collisions become `name (1).ext`, `name (2).ext`, ...).
 
 The CLI keeps a live TUI showing shared files and incoming uploads. Press `q` or `Ctrl+C` to stop.
 

@@ -1,4 +1,4 @@
-import type { SharedFile } from '../lib/files.ts';
+import type { SharedEntry } from '../lib/files.ts';
 
 function escapeHtml(s: string): string {
   return s
@@ -9,28 +9,70 @@ function escapeHtml(s: string): string {
     .replaceAll("'", '&#39;');
 }
 
-function renderFileRows(files: SharedFile[]): string {
-  if (files.length === 0) {
+const ICON_DOWNLOAD = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
+const ICON_FOLDER = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h3.5l2 2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z"/></svg>`;
+const ICON_ARCHIVE = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>`;
+const ICON_CHEV = `<svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 8 8-8 8"/></svg>`;
+
+function renderEntryRows(entries: SharedEntry[]): string {
+  if (entries.length === 0) {
     return '<div class="empty">No files shared</div>';
   }
-  return files
-    .map(
-      (f) => `
-<a class="row" href="/send/${encodeURIComponent(f.name)}" download>
-<span class="icon" aria-hidden="true">
-<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-</span>
-<span class="label">${escapeHtml(f.name)}</span>
-<span class="meta">${escapeHtml(f.sizeHuman)}</span>
-<span class="chev" aria-hidden="true">
-<svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 8 8-8 8"/></svg>
-</span>
-</a>`,
-    )
+  return entries
+    .map((e) => {
+      const encoded = encodeURIComponent(e.name);
+      if (e.kind === 'dir') {
+        const count = e.fileCount ?? 0;
+        const meta = `${count} file${count === 1 ? '' : 's'} · ${escapeHtml(e.sizeHuman)}`;
+        return `
+<a class="row" href="/zip/${encoded}" download>
+<span class="icon" aria-hidden="true">${ICON_FOLDER}</span>
+<span class="label">${escapeHtml(e.name)}</span>
+<span class="meta">${meta}</span>
+<span class="chev" aria-hidden="true">${ICON_CHEV}</span>
+</a>`;
+      }
+      return `
+<a class="row" href="/send/${encoded}" download>
+<span class="icon" aria-hidden="true">${ICON_DOWNLOAD}</span>
+<span class="label">${escapeHtml(e.name)}</span>
+<span class="meta">${escapeHtml(e.sizeHuman)}</span>
+<span class="chev" aria-hidden="true">${ICON_CHEV}</span>
+</a>`;
+    })
     .join('');
 }
 
-export function renderIndex(files: SharedFile[]): string {
+function renderZipAllRow(entries: SharedEntry[]): string {
+  const hasDir = entries.some((e) => e.kind === 'dir');
+  if (entries.length < 2 && !hasDir) return '';
+  const totalBytes = entries.reduce((s, e) => s + e.size, 0);
+  const totalHuman = formatHuman(totalBytes);
+  const count = entries.length;
+  const label = count === 1 ? 'Download as zip' : `Download all as zip (${count})`;
+  return `
+<a class="row row--zip" href="/zip" download>
+<span class="icon" aria-hidden="true">${ICON_ARCHIVE}</span>
+<span class="label">${label}</span>
+<span class="meta">${escapeHtml(totalHuman)}</span>
+<span class="chev" aria-hidden="true">${ICON_CHEV}</span>
+</a>`;
+}
+
+function formatHuman(n: number): string {
+  const unit = 1024;
+  if (n < unit) return `${n} B`;
+  const units = ['K', 'M', 'G', 'T'];
+  let div = unit;
+  let exp = 0;
+  for (let x = Math.floor(n / unit); x >= unit; x = Math.floor(x / unit)) {
+    div *= unit;
+    exp++;
+  }
+  return `${(n / div).toFixed(1)} ${units[exp] ?? 'T'}B`;
+}
+
+export function renderIndex(entries: SharedEntry[]): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -157,6 +199,7 @@ body {
   font-weight: 500;
 }
 .row--pick .label { color: var(--accent); font-weight: 500; }
+.row--zip .label, .row--zip .icon { color: var(--accent); font-weight: 600; }
 .row .icon {
   width: 22px; height: 22px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -217,7 +260,7 @@ input[type=file] { display: none; }
 
 <div class="section-label">Shared</div>
 <div class="card">
-${renderFileRows(files)}
+${renderEntryRows(entries)}${renderZipAllRow(entries)}
 </div>
 
 <div class="section-label">Send to host</div>

@@ -4,8 +4,9 @@ import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { downloadsDir, sanitizeFilename, uniquePath } from '../lib/downloads.ts';
-import { humanSize, type SharedFile } from '../lib/files.ts';
+import { humanSize, type SharedEntry } from '../lib/files.ts';
 import { renderIndex } from './page.ts';
+import { zipResponse } from './zip.ts';
 
 export type UploadEvent = {
   name: string;
@@ -16,22 +17,17 @@ export type UploadEvent = {
   at: Date;
 };
 
-export type ShareEvents = {
-  upload: (e: UploadEvent) => void;
-  error: (err: Error) => void;
-};
-
 export class ShareServer extends EventEmitter {
   private server?: ReturnType<typeof Bun.serve>;
-  private byName: Map<string, SharedFile>;
+  private byName: Map<string, SharedEntry>;
 
   constructor(
-    private files: SharedFile[],
+    private entries: SharedEntry[],
     private host: string,
     private port: number,
   ) {
     super();
-    this.byName = new Map(files.map((f) => [f.name, f]));
+    this.byName = new Map(entries.map((e) => [e.name, e]));
   }
 
   get url(): string {
@@ -59,20 +55,31 @@ export class ShareServer extends EventEmitter {
     const { pathname } = url;
 
     if (req.method === 'GET' && pathname === '/') {
-      return new Response(renderIndex(this.files), {
+      return new Response(renderIndex(this.entries), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
     }
 
+    if (req.method === 'GET' && pathname === '/zip') {
+      return zipResponse(this.entries, 'qrit-bundle.zip');
+    }
+
+    if (req.method === 'GET' && pathname.startsWith('/zip/')) {
+      const name = decodeURIComponent(pathname.slice('/zip/'.length));
+      const entry = this.byName.get(name);
+      if (!entry) return new Response('not found', { status: 404 });
+      return zipResponse([entry], `${entry.name}.zip`);
+    }
+
     if (req.method === 'GET' && pathname.startsWith('/send/')) {
       const name = decodeURIComponent(pathname.slice('/send/'.length));
-      const f = this.byName.get(name);
-      if (!f) return new Response('not found', { status: 404 });
-      const file = Bun.file(f.path);
+      const entry = this.byName.get(name);
+      if (!entry || entry.kind !== 'file') return new Response('not found', { status: 404 });
+      const file = Bun.file(entry.path);
       return new Response(file, {
         headers: {
-          'Content-Disposition': `attachment; filename="${f.name}"`,
-          'Content-Length': String(f.size),
+          'Content-Disposition': `attachment; filename="${entry.name}"`,
+          'Content-Length': String(entry.size),
         },
       });
     }

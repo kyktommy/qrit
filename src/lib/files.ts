@@ -1,11 +1,13 @@
-import { statSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
+import { readdirSync, statSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 
-export type SharedFile = {
-  name: string;
-  path: string;
-  size: number;
+export type SharedEntry = {
+  kind: 'file' | 'dir';
+  name: string; // URL-safe basename
+  path: string; // absolute path on disk
+  size: number; // bytes (sum of all files inside, for dirs)
   sizeHuman: string;
+  fileCount?: number; // for dirs only
 };
 
 export function humanSize(n: number): string {
@@ -22,7 +24,26 @@ export function humanSize(n: number): string {
   return `${(n / div).toFixed(1)} ${unitChar}B`;
 }
 
-export function resolveShares(args: string[]): SharedFile[] {
+function walkDir(root: string): { size: number; count: number } {
+  let size = 0;
+  let count = 0;
+  const stack = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    for (const e of readdirSync(cur, { withFileTypes: true })) {
+      if (e.name.startsWith('.')) continue; // skip hidden
+      const p = join(cur, e.name);
+      if (e.isDirectory()) stack.push(p);
+      else if (e.isFile()) {
+        size += statSync(p).size;
+        count++;
+      }
+    }
+  }
+  return { size, count };
+}
+
+export function resolveShares(args: string[]): SharedEntry[] {
   return args.map((a) => {
     const abs = resolve(a);
     let stat: ReturnType<typeof statSync>;
@@ -33,8 +54,11 @@ export function resolveShares(args: string[]): SharedFile[] {
       if (e.code === 'ENOENT') throw new Error(`file not found: ${abs}`);
       throw new Error(`stat ${a}: ${e.message}`);
     }
-    if (stat.isDirectory()) throw new Error(`directory not supported: ${abs}`);
     const name = basename(abs).replaceAll(' ', '-');
-    return { name, path: abs, size: stat.size, sizeHuman: humanSize(stat.size) };
+    if (stat.isDirectory()) {
+      const { size, count } = walkDir(abs);
+      return { kind: 'dir', name, path: abs, size, sizeHuman: humanSize(size), fileCount: count };
+    }
+    return { kind: 'file', name, path: abs, size: stat.size, sizeHuman: humanSize(stat.size) };
   });
 }

@@ -36,6 +36,7 @@
     "url": "git+https://github.com/kyktommy/qrit.git"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "ink": "^5.2.0",
     "ink-spinner": "^5.0.0",
     "qrcode": "^1.5.4",
@@ -43,6 +44,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@types/archiver": "^7.0.0",
     "@types/bun": "^1.1.13",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.12",
