@@ -4,11 +4,13 @@ A tiny Bun + Ink CLI that turns a QR code into a two-way file drop on your LAN. 
 
 ### Install
 
-**Homebrew (recommended):**
+**Install script (macOS / Linux, no runtime needed):**
 
 ```sh
-brew install kyktommy/tap/qrit
+curl -fsSL https://raw.githubusercontent.com/kyktommy/qrit/main/install.sh | sh
 ```
+
+Installs the standalone binary to `~/.local/bin`. Set `QRIT_INSTALL_DIR` to change the location or `QRIT_VERSION` (e.g. `v0.2.0`) to pin a release.
 
 **From source (requires [Bun](https://bun.sh) ≥ 1.1):**
 
@@ -48,7 +50,6 @@ Tagging a commit with `vX.Y.Z` triggers `.github/workflows/release.yml`, which:
 
 1. Compiles standalone binaries for `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64` with `bun build --compile`.
 2. Uploads the tarballs and a checksum file to the GitHub release.
-3. (Optional) Regenerates the Homebrew formula in the tap repo — set `HOMEBREW_TAP_REPO` (variable) and `HOMEBREW_TAP_TOKEN` (secret) to enable this step.
 
 ### Reference
 

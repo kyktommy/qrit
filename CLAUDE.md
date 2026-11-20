@@ -62,8 +62,6 @@ bun run dev -- test.txt
 
 Quit the TUI with `q` or `Ctrl+C`.
 
-## Release / Homebrew
+## Release
 
-Tag `vX.Y.Z` → `.github/workflows/release.yml` builds standalone Bun-compiled binaries for `darwin/linux × arm64/x64`, uploads them + a SHA-256 checksum file to the GitHub release, and (if `HOMEBREW_TAP_REPO` var + `HOMEBREW_TAP_TOKEN` secret are set) regenerates `Formula/qrit.rb` in the tap repo.
-
-`Formula/qrit.rb.template` is kept in-repo for reference / manual taps.
+Tag `vX.Y.Z` → `.github/workflows/release.yml` builds standalone Bun-compiled binaries for `darwin/linux × arm64/x64`, and uploads them + a SHA-256 checksum file to the GitHub release. `install.sh` (the public install path) downloads from those release assets, so the tag must match `package.json` version — the checksum file is named `checksums-<version>.txt`.
